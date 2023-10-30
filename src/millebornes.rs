@@ -2,7 +2,7 @@
 use bevy::prelude::*;
 use rand::thread_rng;
 use rand::seq::SliceRandom;
-use crate::constants::GameState;
+use crate::constants::*;
 use crate::cards::*;
 use crate::menu::*;
 
@@ -13,6 +13,7 @@ impl Plugin for MilleBornes {
         app
             .add_plugins(Cards)
             .add_plugins(Menu)
+            .insert_resource(ClearColor(BACKGROUND_COLOUR))
             .add_state::<GameState>()
             // Resources 
             .init_resource::<Game>()
@@ -30,6 +31,7 @@ impl Plugin for MilleBornes {
             .add_systems(
                 OnEnter(GameState::BeginGame), (
                     deal,
+                    apply_deferred.after(deal),
                     draw_board_ui,
                     start_game
                 ).chain()
@@ -103,8 +105,8 @@ fn deal(game_rules: Res<GameRules>, mut game: ResMut<Game>, mut commands: Comman
 }
 
 fn draw_board_ui(mut commands: Commands,
-                 player_cards: Query<(Entity, &CardName), (With<PlayerHand>, Without<OpponentHand>)>,
-                 opponent_cards: Query<(Entity, &CardName), (With<OpponentHand>, Without<PlayerHand>)>) 
+                 player_cards: Query<(Entity, &CardName, &CardType), (With<PlayerHand>, Without<OpponentHand>)>,
+                 opponent_cards: Query<(Entity, &CardName, &CardType), (With<OpponentHand>, Without<PlayerHand>)>) 
 {
     let holder = commands.spawn(
         NodeBundle {
@@ -149,13 +151,13 @@ fn draw_board_ui(mut commands: Commands,
         }
     ).id();
 
-    for (entity, card_name) in player_cards.iter() {
-        let player_card = build_card_ui(&card_name.0, entity, &mut commands);
+    for (entity, card_name, card_type) in player_cards.iter() {
+        let player_card = build_card_ui(&card_name.0, card_type, entity, &mut commands);
         commands.entity(player_card_holder).push_children(&[player_card]);
     }
 
-    for (entity, card_name) in opponent_cards.iter() {
-        let opponent_card = build_card_ui(&card_name.0, entity, &mut commands);
+    for (entity, card_name, card_type) in opponent_cards.iter() {
+        let opponent_card = build_card_ui(&card_name.0, card_type, entity, &mut commands);
         commands.entity(opponent_card_holder).push_children(&[opponent_card]);
     }
 
@@ -168,7 +170,7 @@ struct UILink {
     entity: Entity,
 }
 
-fn build_card_ui(name: &String, card_entity: Entity, commands: &mut Commands) -> Entity {
+fn build_card_ui(name: &String, card_type: &CardType, card_entity: Entity, commands: &mut Commands) -> Entity {
     let mut binding = commands.spawn(
         NodeBundle {
             style: Style {
@@ -186,13 +188,15 @@ fn build_card_ui(name: &String, card_entity: Entity, commands: &mut Commands) ->
                 },
                 ButtonBundle {
                     style: Style {
+                        // todo change to percent
                         width: Val::Px(200.),
                         height: Val::Px(250.),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
+                        align_content: AlignContent::Center,
                         ..default()
                     },
-                    background_color: NORMAL_BUTTON.into(),
+                    background_color: get_card_colour(card_type).into(),
                     ..default()
                 })).with_children(|parent| {
                     parent.spawn(
@@ -210,9 +214,9 @@ fn build_card_ui(name: &String, card_entity: Entity, commands: &mut Commands) ->
     return node_bundle.id();
 }
 
-/****
+/************
  * GAME LOOP
- */
+ ************/
 
 fn start_game(mut next_state: ResMut<NextState<GameState>>) {
     next_state.set(GameState::PlayerTurn);
@@ -220,19 +224,21 @@ fn start_game(mut next_state: ResMut<NextState<GameState>>) {
 
 fn update_cards(mut interaction_query: Query<(&Interaction, &UILink, &mut BackgroundColor),
                                              (Changed<Interaction>, With<Button>)>,
-                card_name_query: Query<&CardName>) 
+                card_query: Query<(&CardName, &CardType)>) 
 {
     for (interaction, ui_link, mut colour) in &mut interaction_query {
+        let card = card_query.get(ui_link.entity).unwrap();
+        
         match *interaction {
             Interaction::Pressed => {
                 *colour = PRESSED_BUTTON.into();
-                println!("Clicked {}", card_name_query.get(ui_link.entity).unwrap().0);
+                println!("Clicked {}", card.0.0);
             }
             Interaction::Hovered => {
                 *colour = HOVERED_BUTTON.into();
             }
             Interaction::None => {
-                *colour = NORMAL_BUTTON.into();
+                *colour = get_card_colour(card.1).into()
             }
         }
     }

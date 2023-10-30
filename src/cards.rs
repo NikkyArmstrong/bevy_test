@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+use crate::constants::{HAZARD_CARD, REMEDY_CARD, SAFETY_CARD, DISTANCE_CARD};
+
 // Card type initialisation consts
 const ACCIDENT: i32 = 3;
 const OUT_OF_GAS: i32 = 3;
@@ -132,6 +134,15 @@ fn spawn_distances(mut commands: Commands)
     }
 }
 
+pub fn get_card_colour(card_type: &CardType) -> Color {
+    match card_type {
+        CardType::Hazard => HAZARD_CARD,
+        CardType::Remedy => REMEDY_CARD,
+        CardType::Safety => SAFETY_CARD,
+        CardType::Distance => DISTANCE_CARD,
+    }
+}
+
 // Ideally this would have an int indicating order of the deck 
 // but ordered queries aren't supported yet
 #[derive(Component)]
@@ -149,8 +160,8 @@ pub struct DiscardPile;
 #[derive(Component)]
 pub struct Card;
 
-#[derive(Component)]
-enum CardType {
+#[derive(Component, Eq, PartialEq)]
+pub enum CardType {
     Hazard,
     Remedy,
     Safety,
@@ -160,8 +171,8 @@ enum CardType {
 #[derive(Component, Debug)]
 pub struct CardName(pub String);
 
-#[derive(Component)]
-enum ActionType {
+#[derive(Component, Eq, PartialEq)]
+pub enum ActionType {
     Offensive,
     Defensive
 }
@@ -345,7 +356,7 @@ impl Default for SpareTyre {
         Self {
             card: Card,
             category: Remedy::default(),
-            name: CardName("SpareTyre".into())
+            name: CardName("Spare Tyre".into())
         }
     }
 }
@@ -362,7 +373,7 @@ impl Default for EndOfLimit {
         Self {
             card: Card,
             category: Remedy::default(),
-            name: CardName("EndOfLimit".into())
+            name: CardName("End of Limit".into())
         }
     }
 }
