@@ -2,81 +2,71 @@
 use bevy::prelude::*;
 use rand::thread_rng;
 use rand::seq::SliceRandom;
-use crate::{cards::{Cards, Card, CardName}, menu::{setup_menu, cleanup_menu, PRESSED_BUTTON, HOVERED_BUTTON, NORMAL_BUTTON, TEXT_COLOUR}};
+use crate::constants::GameState;
+use crate::cards::*;
+use crate::menu::*;
 
 pub struct MilleBornes;
-
-#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
-enum GameState {
-    #[default]
-    Menu,
-    SetupGame,
-    PlayerTurn,
-    OpponentTurn
-}
 
 impl Plugin for MilleBornes {
     fn build(&self, app: &mut App) {
         app
             .add_plugins(Cards)
+            .add_plugins(Menu)
             .add_state::<GameState>()
+            // Resources 
             .init_resource::<Game>()
             .init_resource::<GameRules>()
-            .add_systems(OnEnter(GameState::Menu), (setup_camera, setup_menu))
-            .add_systems(Update, update_menu.run_if(in_state(GameState::Menu)))
-            .add_systems(OnExit(GameState::Menu), cleanup_menu)
-            .add_systems(OnEnter(GameState::SetupGame), (setup_game, deal, draw_board_ui, start_game).chain())
-            .add_systems(Update, update_cards.run_if(in_state(GameState::PlayerTurn)))
-            .add_systems(Update, process_player_turn.run_if(in_state(GameState::PlayerTurn)))
-            .add_systems(Update, process_opponent_turn.run_if(in_state(GameState::OpponentTurn)));
+            .add_systems(
+                Startup,
+                setup_camera
+            )
+            // Game Setup
+            .add_systems(
+                OnEnter(GameState::SetupGame), 
+                setup_game.after(CardSet::CardInit)
+            )
+            // Game Start
+            .add_systems(
+                OnEnter(GameState::BeginGame), (
+                    deal,
+                    draw_board_ui,
+                    start_game
+                ).chain()
+            )
+            // Player Turn
+            .add_systems(
+                Update, (
+                    update_cards,
+                    process_player_turn
+                ).run_if(in_state(GameState::PlayerTurn))
+            )
+            // Opponent Turn
+            .add_systems(Update, 
+                process_opponent_turn.run_if(in_state(GameState::OpponentTurn))
+            );
     }
 }
 
 #[derive(Resource, Default)]
 struct Game {
-    deck: Vec<Entity>,
-    player_hand: Vec<Entity>,
-    opponent_hand: Vec<Entity>,
-    discard_pile: Vec<Entity>
+    deck: Vec<Entity>
 }
 
 #[derive(Resource)]
 struct GameRules {
-    miles: i32,
+    // miles: i32,
     hand_size: i32
 }
 impl Default for GameRules {
     fn default() -> Self {
         Self {
-            miles: 700,
+            // miles: 700,
             hand_size: 6
         }
     }
 }
 
-/*****
- * UPDATES
- */
-
-fn update_menu(mut next_state: ResMut<NextState<GameState>>,
-               mut interaction_query: Query<(&Interaction, &mut BackgroundColor),
-                                            (Changed<Interaction>, With<Button>)>) 
-{
-    for (interaction, mut colour) in &mut interaction_query {
-        match *interaction {
-            Interaction::Pressed => {
-                *colour = PRESSED_BUTTON.into();
-                next_state.set(GameState::SetupGame);
-            }
-            Interaction::Hovered => {
-                *colour = HOVERED_BUTTON.into();
-            }
-            Interaction::None => {
-                *colour = NORMAL_BUTTON.into();
-            }
-        }
-    }
-}
 /*************
  * GAME SETUP
  *************/
@@ -85,30 +75,37 @@ fn setup_camera(mut commands: Commands) {
     commands.spawn(Camera2dBundle::default());
 }
 
-fn setup_game(mut game: ResMut<Game>, query: Query<(Entity, &Card)>)
+fn setup_game(mut game: ResMut<Game>, mut commands: Commands, query: Query<(Entity, &Card)>, mut next_state: ResMut<NextState<GameState>>)
 {
     for (entity, _card) in query.iter()
     {
         game.deck.push(entity);
+
+        // Tag the card as being in the deck
+        commands.entity(entity).insert(Deck);
     }
 
     game.deck.shuffle(&mut thread_rng());
+
+    next_state.set(GameState::BeginGame);
 }
 
-fn deal(mut game: ResMut<Game>, game_rules: Res<GameRules>)
+fn deal(game_rules: Res<GameRules>, mut game: ResMut<Game>, mut commands: Commands)
 {
     for _i in 0..game_rules.hand_size {
-
-        // todo - this will break if deck is empty
+        // This is safe because if this panics something went wrong in setup
         let player_card = game.deck.pop().unwrap();
         let opponent_card = game.deck.pop().unwrap();
 
-        game.player_hand.push(player_card);
-        game.opponent_hand.push(opponent_card);
+        commands.entity(player_card).remove::<Deck>().insert(PlayerHand);
+        commands.entity(opponent_card).remove::<Deck>().insert(OpponentHand);
     }
 }
 
-fn draw_board_ui(game: Res<Game>, mut commands: Commands, card_name_query: Query<&CardName>) {
+fn draw_board_ui(mut commands: Commands,
+                 player_cards: Query<(Entity, &CardName), (With<PlayerHand>, Without<OpponentHand>)>,
+                 opponent_cards: Query<(Entity, &CardName), (With<OpponentHand>, Without<PlayerHand>)>) 
+{
     let holder = commands.spawn(
         NodeBundle {
             style: Style {
@@ -152,19 +149,20 @@ fn draw_board_ui(game: Res<Game>, mut commands: Commands, card_name_query: Query
         }
     ).id();
 
-    for entity in &game.player_hand {
-        let player_card = build_card_ui(&card_name_query.get(*entity).unwrap().0, *entity, &mut commands);
+    for (entity, card_name) in player_cards.iter() {
+        let player_card = build_card_ui(&card_name.0, entity, &mut commands);
         commands.entity(player_card_holder).push_children(&[player_card]);
     }
 
-    for entity in &game.opponent_hand {
-        let opponent_card = build_card_ui(&card_name_query.get(*entity).unwrap().0, *entity, &mut commands);
+    for (entity, card_name) in opponent_cards.iter() {
+        let opponent_card = build_card_ui(&card_name.0, entity, &mut commands);
         commands.entity(opponent_card_holder).push_children(&[opponent_card]);
     }
 
     commands.entity(holder).push_children(&[player_card_holder, opponent_card_holder]);
 }
 
+// Link the UI representation of a card button to its physical entity
 #[derive(Component)]
 struct UILink {
     entity: Entity,

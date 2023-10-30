@@ -132,6 +132,20 @@ fn spawn_distances(mut commands: Commands)
     }
 }
 
+// Ideally this would have an int indicating order of the deck 
+// but ordered queries aren't supported yet
+#[derive(Component)]
+pub struct Deck;
+
+#[derive(Component)]
+pub struct PlayerHand;
+
+#[derive(Component)]
+pub struct OpponentHand;
+
+#[derive(Component)]
+pub struct DiscardPile;
+
 #[derive(Component)]
 pub struct Card;
 

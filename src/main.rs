@@ -1,6 +1,7 @@
 pub mod millebornes;
 pub mod cards;
 pub mod menu;
+pub mod constants;
 
 use bevy::prelude::*;
 use millebornes::MilleBornes;
