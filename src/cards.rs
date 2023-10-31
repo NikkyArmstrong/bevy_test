@@ -1,7 +1,5 @@
 use bevy::prelude::*;
 
-use crate::constants::{HAZARD_CARD, REMEDY_CARD, SAFETY_CARD, DISTANCE_CARD};
-
 // Card type initialisation consts
 const ACCIDENT: i32 = 3;
 const OUT_OF_GAS: i32 = 3;
@@ -131,15 +129,6 @@ fn spawn_distances(mut commands: Commands)
 
     for _i in 0..TWO_HUNDRED {
         commands.spawn(TwoHundred::default());
-    }
-}
-
-pub fn get_card_colour(card_type: &CardType) -> Color {
-    match card_type {
-        CardType::Hazard => HAZARD_CARD,
-        CardType::Remedy => REMEDY_CARD,
-        CardType::Safety => SAFETY_CARD,
-        CardType::Distance => DISTANCE_CARD,
     }
 }
 

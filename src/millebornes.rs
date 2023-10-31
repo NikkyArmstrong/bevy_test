@@ -5,6 +5,9 @@ use rand::seq::SliceRandom;
 use crate::constants::*;
 use crate::cards::*;
 use crate::menu::*;
+use crate::ui::board_ui::draw_board_ui;
+use crate::ui::card_ui::UILink;
+use crate::ui::card_ui::get_card_colour;
 
 pub struct MilleBornes;
 
@@ -102,116 +105,6 @@ fn deal(game_rules: Res<GameRules>, mut game: ResMut<Game>, mut commands: Comman
         commands.entity(player_card).remove::<Deck>().insert(PlayerHand);
         commands.entity(opponent_card).remove::<Deck>().insert(OpponentHand);
     }
-}
-
-fn draw_board_ui(mut commands: Commands,
-                 player_cards: Query<(Entity, &CardName, &CardType), (With<PlayerHand>, Without<OpponentHand>)>,
-                 opponent_cards: Query<(Entity, &CardName, &CardType), (With<OpponentHand>, Without<PlayerHand>)>) 
-{
-    let holder = commands.spawn(
-        NodeBundle {
-            style: Style {
-                display: Display::Flex,
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Percent(25.),
-                width: Val::Percent(100.),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            ..default()
-        }
-    ).id();
-
-    let player_card_holder = commands.spawn(
-        NodeBundle {
-            style: Style {
-                display: Display::Flex,
-                flex_direction: FlexDirection::Row,
-                width: Val::Percent(100.),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            ..default()
-        }
-    ).id();
-
-    let opponent_card_holder = commands.spawn(
-        NodeBundle {
-            style: Style {
-                display: Display::Flex,
-                flex_direction: FlexDirection::Row,
-                width: Val::Percent(100.),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            ..default()
-        }
-    ).id();
-
-    for (entity, card_name, card_type) in player_cards.iter() {
-        let player_card = build_card_ui(&card_name.0, card_type, entity, &mut commands);
-        commands.entity(player_card_holder).push_children(&[player_card]);
-    }
-
-    for (entity, card_name, card_type) in opponent_cards.iter() {
-        let opponent_card = build_card_ui(&card_name.0, card_type, entity, &mut commands);
-        commands.entity(opponent_card_holder).push_children(&[opponent_card]);
-    }
-
-    commands.entity(holder).push_children(&[player_card_holder, opponent_card_holder]);
-}
-
-// Link the UI representation of a card button to its physical entity
-#[derive(Component)]
-struct UILink {
-    entity: Entity,
-}
-
-fn build_card_ui(name: &String, card_type: &CardType, card_entity: Entity, commands: &mut Commands) -> Entity {
-    let mut binding = commands.spawn(
-        NodeBundle {
-            style: Style {
-                width: Val::Percent(100.),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            ..default()
-        });
-    let node_bundle = binding.with_children(|parent| {
-            parent.spawn((
-                UILink {
-                    entity: card_entity
-                },
-                ButtonBundle {
-                    style: Style {
-                        // todo change to percent
-                        width: Val::Px(200.),
-                        height: Val::Px(250.),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        align_content: AlignContent::Center,
-                        ..default()
-                    },
-                    background_color: get_card_colour(card_type).into(),
-                    ..default()
-                })).with_children(|parent| {
-                    parent.spawn(
-                        TextBundle::from_section(
-                            name.clone(),
-                            TextStyle {
-                                font_size: 32.,
-                                color: TEXT_COLOUR.into(),
-                                ..default()
-                            }
-                        ));
-                    });
-        });
-
-    return node_bundle.id();
 }
 
 /************
