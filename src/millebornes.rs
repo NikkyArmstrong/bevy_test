@@ -43,7 +43,9 @@ impl Plugin for MilleBornes {
             .add_systems(
                 Update, (
                     update_cards,
-                    process_player_turn
+                    apply_deferred.after(update_cards),
+                    process_player_turn,
+                    //draw_board_ui
                 ).run_if(in_state(GameState::PlayerTurn))
             )
             // Opponent Turn
@@ -80,9 +82,11 @@ fn setup_camera(mut commands: Commands) {
     commands.spawn(Camera2dBundle::default());
 }
 
-fn setup_game(mut game: ResMut<Game>, mut commands: Commands, query: Query<(Entity, &Card)>, mut next_state: ResMut<NextState<GameState>>)
+fn setup_game(mut game: ResMut<Game>, mut commands: Commands, 
+              card_query: Query<(Entity, &Card)>,
+              mut next_state: ResMut<NextState<GameState>>)
 {
-    for (entity, _card) in query.iter()
+    for (entity, _card) in card_query.iter()
     {
         game.deck.push(entity);
 
@@ -91,7 +95,7 @@ fn setup_game(mut game: ResMut<Game>, mut commands: Commands, query: Query<(Enti
     }
 
     game.deck.shuffle(&mut thread_rng());
-
+    println!("{}", game.deck.len());
     next_state.set(GameState::BeginGame);
 }
 
@@ -115,30 +119,43 @@ fn start_game(mut next_state: ResMut<NextState<GameState>>) {
     next_state.set(GameState::PlayerTurn);
 }
 
-fn update_cards(mut interaction_query: Query<(&Interaction, &UILink, &mut BackgroundColor),
+fn update_cards(mut interaction_query: Query<(Entity, &Interaction, &UILink, &mut BackgroundColor),
                                              (Changed<Interaction>, With<Button>)>,
-                card_query: Query<(&CardName, &CardType)>) 
+                mut commands: Commands,
+                card_query: Query<(&CardName, &CardType, &SubType)>,
+                board_query: Query<(Entity, &CardType, &SubType), With<PlayerBoard>>) 
 {
-    for (interaction, ui_link, mut colour) in &mut interaction_query {
-        let card = card_query.get(ui_link.entity).unwrap();
+    for (ui_entity, interaction, ui_link, mut colour) in &mut interaction_query {
+        let (card_name, card_type, sub_type) = card_query.get(ui_link.entity).unwrap();
         
-        match *interaction {
-            Interaction::Pressed => {
-                *colour = PRESSED_BUTTON.into();
-                println!("Clicked {}", card.0.0);
-            }
-            Interaction::Hovered => {
-                *colour = HOVERED_BUTTON.into();
-            }
-            Interaction::None => {
-                *colour = get_card_colour(card.1).into()
+        if Card::is_valid(&board_query, card_type, sub_type) {
+            match *interaction {
+                Interaction::Pressed => {
+                    *colour = PRESSED_BUTTON.into();
+                    println!("Clicked {}", card_name.0);
+                    if let Ok((entity, _, _)) = board_query.get_single() {
+                        commands.entity(entity).remove::<PlayerBoard>();
+                        // todo remove ui here
+                    }
+                    
+                    commands.entity(ui_link.entity).insert(PlayerBoard);
+                    commands.entity(ui_link.entity).remove::<PlayerHand>();
+                    commands.entity(ui_entity).despawn_recursive();
+
+                }
+                Interaction::Hovered => {
+                    *colour = HOVERED_BUTTON.into();
+                }
+                Interaction::None => {
+                    *colour = get_card_colour(card_type).into()
+                }
             }
         }
     }
 }
 
 fn process_player_turn() {
-
+    
 }
 
 fn process_opponent_turn() {

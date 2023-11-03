@@ -48,5 +48,7 @@ pub fn build_card_ui(name: &String, card_type: &CardType, card_entity: Entity, c
                     });
         //});
 
-    return node_bundle.id();
+    let id = node_bundle.id();
+    commands.entity(card_entity).insert(UILink { entity: id });
+    return id;
 }

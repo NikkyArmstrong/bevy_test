@@ -4,7 +4,8 @@ use super::card_ui::build_card_ui;
 
 pub fn draw_board_ui(mut commands: Commands,
     player_cards: Query<(Entity, &CardName, &CardType), (With<PlayerHand>, Without<OpponentHand>)>,
-    opponent_cards: Query<(Entity, &CardName, &CardType), (With<OpponentHand>, Without<PlayerHand>)>) 
+    opponent_cards: Query<(Entity, &CardName, &CardType), (With<OpponentHand>, Without<PlayerHand>)>,
+    board_card: Query<(Entity, &CardName, &CardType), (With<PlayerBoard>, Without<PlayerHand>, Without<OpponentHand>)>) 
 {
     let board = commands.spawn(
         NodeBundle {
@@ -37,6 +38,21 @@ pub fn draw_board_ui(mut commands: Commands,
         }
     ).id();
 
+    let board_card_holder = commands.spawn(
+        NodeBundle {
+            style: Style {
+                display: Display::Flex,
+                flex_direction: FlexDirection::Row,
+                width: Val::Percent(100.),
+                height: Val::Percent(50.),
+                justify_content: JustifyContent::SpaceEvenly,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            ..default()
+        }
+    ).id();
+
     let opponent_card_holder = commands.spawn(
         NodeBundle {
             style: Style {
@@ -52,15 +68,20 @@ pub fn draw_board_ui(mut commands: Commands,
         }
     ).id();
 
+    for (entity, card_name, card_type) in board_card.iter() {
+        let board_card = build_card_ui(&card_name.0, &card_type, entity, &mut commands);
+        commands.entity(board_card_holder).push_children(&[board_card]);
+    }
+
     for (entity, card_name, card_type) in player_cards.iter() {
-        let player_card = build_card_ui(&card_name.0, card_type, entity, &mut commands);
+        let player_card = build_card_ui(&card_name.0, &card_type, entity, &mut commands);
         commands.entity(player_card_holder).push_children(&[player_card]);
     }
 
     for (entity, card_name, card_type) in opponent_cards.iter() {
-        let opponent_card = build_card_ui(&card_name.0, card_type, entity, &mut commands);
+        let opponent_card = build_card_ui(&card_name.0, &card_type, entity, &mut commands);
         commands.entity(opponent_card_holder).push_children(&[opponent_card]);
     }
 
-    commands.entity(board).push_children(&[player_card_holder, opponent_card_holder]);
+    commands.entity(board).push_children(&[player_card_holder, board_card_holder, opponent_card_holder]);
 }
