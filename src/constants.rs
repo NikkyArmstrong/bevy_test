@@ -6,6 +6,14 @@ pub enum GameState {
     Menu,
     SetupGame,
     BeginGame,
+    DuringTurn,
+    NextTurn
+}
+
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
+pub enum TurnState {
+    #[default]
+    NoTurn,
     PlayerTurn,
     OpponentTurn
 }

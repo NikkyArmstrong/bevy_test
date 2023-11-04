@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+use crate::ui::card_ui::CardToUILink;
+
 // Card type initialisation consts
 const ACCIDENT: i32 = 3;
 const OUT_OF_GAS: i32 = 3;
@@ -13,16 +15,16 @@ const SPARE_TYRE: i32 = 6;
 const END_OF_LIMIT: i32 = 6;
 const ROLL: i32 = 14;
 
-// const DRIVING_ACE: i32 = 1;
-// const EXTRA_TANK: i32 = 1;
-// const PUNCTURE_PROOF: i32 = 1;
-// const RIGHT_OF_WAY: i32 = 1;
+const DRIVING_ACE: i32 = 1;
+const EXTRA_TANK: i32 = 1;
+const PUNCTURE_PROOF: i32 = 1;
+const RIGHT_OF_WAY: i32 = 1;
 
-// const TWENTY_FIVE: i32 = 10;
-// const FIFTY: i32 = 10;
-// const SEVENTY_FIVE: i32 = 10;
-// const ONE_HUNDRED: i32 = 12;
-// const TWO_HUNDRED: i32 = 4;
+const TWENTY_FIVE: i32 = 10;
+const FIFTY: i32 = 10;
+const SEVENTY_FIVE: i32 = 10;
+const ONE_HUNDRED: i32 = 12;
+const TWO_HUNDRED: i32 = 4;
 
 pub struct Cards;
 
@@ -37,9 +39,8 @@ impl Plugin for Cards {
             .add_systems(Startup,
                 (spawn_hazards,
                           spawn_remedies,
-                          //spawn_safeties,
-                          //spawn_distances
-                        )
+                          spawn_safeties,
+                          spawn_distances)
                         .in_set(CardSet::CardInit)
                     );
     }
@@ -91,47 +92,47 @@ fn spawn_remedies(mut commands: Commands)
     }
 }
 
-// fn spawn_safeties(mut commands: Commands)
-// {
-//     for _i in 0..DRIVING_ACE {
-//         commands.spawn(DrivingAce::default());
-//     }
+fn spawn_safeties(mut commands: Commands)
+{
+    for _i in 0..DRIVING_ACE {
+        commands.spawn(DrivingAce::default());
+    }
 
-//     for _i in 0..EXTRA_TANK {
-//         commands.spawn(ExtraTank::default());
-//     }
+    for _i in 0..EXTRA_TANK {
+        commands.spawn(ExtraTank::default());
+    }
 
-//     for _i in 0..PUNCTURE_PROOF {
-//         commands.spawn(PunctureProof::default());
-//     }
+    for _i in 0..PUNCTURE_PROOF {
+        commands.spawn(PunctureProof::default());
+    }
 
-//     for _i in 0..RIGHT_OF_WAY {
-//         commands.spawn(RightOfWay::default());
-//     }
-// }
+    for _i in 0..RIGHT_OF_WAY {
+        commands.spawn(RightOfWay::default());
+    }
+}
 
-// fn spawn_distances(mut commands: Commands)
-// {
-//     for _i in 0..TWENTY_FIVE {
-//         commands.spawn(TwentyFive::default());
-//     }
+fn spawn_distances(mut commands: Commands)
+{
+    for _i in 0..TWENTY_FIVE {
+        commands.spawn(TwentyFive::default());
+    }
 
-//     for _i in 0..FIFTY {
-//         commands.spawn(Fifty::default());
-//     }
+    for _i in 0..FIFTY {
+        commands.spawn(Fifty::default());
+    }
 
-//     for _i in 0..SEVENTY_FIVE {
-//         commands.spawn(SeventyFive::default());
-//     }
+    for _i in 0..SEVENTY_FIVE {
+        commands.spawn(SeventyFive::default());
+    }
 
-//     for _i in 0..ONE_HUNDRED {
-//         commands.spawn(OneHundred::default());
-//     }
+    for _i in 0..ONE_HUNDRED {
+        commands.spawn(OneHundred::default());
+    }
 
-//     for _i in 0..TWO_HUNDRED {
-//         commands.spawn(TwoHundred::default());
-//     }
-// }
+    for _i in 0..TWO_HUNDRED {
+        commands.spawn(TwoHundred::default());
+    }
+}
 
 // Ideally this would have an int indicating order of the deck 
 // but ordered queries aren't supported yet
@@ -149,11 +150,14 @@ pub struct DiscardPile;
 
 // Play area components
 pub trait Playable {
-    fn is_valid(query: &Query<(Entity, &CardType, &SubType), With<PlayerBoard>>, card_type: &CardType, sub_type: &SubType) -> bool;
+    fn is_valid(board_card_type: &SubType, card_type: &CardType, sub_type: &SubType) -> bool;
 }
 
 #[derive(Component)]
 pub struct PlayerBoard;
+
+#[derive(Component)]
+pub struct OpponentBoard;
 
 #[derive(Component, Eq, PartialEq)]
 pub enum CardType {
@@ -163,7 +167,7 @@ pub enum CardType {
     Distance
 }
 
-#[derive(Component, Eq, PartialEq)]
+#[derive(Component, Eq, PartialEq, Copy, Clone)]
 pub enum SubType {
     Accident,
     OutOfGas,
@@ -174,7 +178,17 @@ pub enum SubType {
     Gasoline,
     EndOfLimit,
     SpareTyre,
-    Roll
+    Roll,
+    PunctureProof,
+    ExtraTank,
+    DrivingAce,
+    RightOfWay,
+    TwentyFive,
+    Fifty,
+    SeventyFive,
+    OneHundred,
+    TwoHundred,
+    NoCard
 }
 
 #[derive(Component, Debug)]
@@ -193,19 +207,32 @@ pub struct CardBundle
     card_type: CardType,
     sub_type: SubType,
     action_type: ActionType,
-    card_tag: Card
+    card_tag: Card,
+    ui_entity: CardToUILink
+}
+impl Default for CardBundle {
+    fn default() -> Self {
+        Self {
+            card_name: CardName("EMPTY".into()),
+            card_type: CardType::Hazard,
+            sub_type: SubType::Accident,
+            action_type: ActionType::Offensive,
+            card_tag: Card,
+            ui_entity: CardToUILink { ui_entity: Entity::PLACEHOLDER },
+        }
+    }
 }
 
 #[derive(Component)]
 pub struct Card;
 
 impl Playable for Card {
-    fn is_valid(query: &Query<(Entity, &CardType, &SubType), With<PlayerBoard>>, card_type: &CardType, sub_type: &SubType) -> bool {
+    fn is_valid(board_card_type: &SubType, card_type: &CardType, sub_type: &SubType) -> bool {
         match card_type {
-            CardType::Hazard => Hazard::is_valid(query, card_type, sub_type),
-            CardType::Remedy => Remedy::is_valid(query, card_type, sub_type),
-            CardType::Safety => todo!(),
-            CardType::Distance => todo!(),
+            CardType::Hazard => Hazard::is_valid(board_card_type, card_type, sub_type),
+            CardType::Remedy => Remedy::is_valid(board_card_type, card_type, sub_type),
+            CardType::Safety => Safety::is_valid(board_card_type, card_type, sub_type),
+            CardType::Distance => Distance::is_valid(board_card_type, card_type, sub_type),
         }
     }
 }
@@ -218,13 +245,8 @@ impl Playable for Card {
 pub struct Hazard;
 
 impl Playable for Hazard {
-    fn is_valid(query: &Query<(Entity, &CardType, &SubType), With<PlayerBoard>>, _card_type: &CardType, _sub_type: &SubType) -> bool {
-        if query.is_empty() {
-            return false;
-        }
-
-        let (_card, _board_card_type, board_sub_type) = query.single();
-        return *board_sub_type == SubType::Roll;
+    fn is_valid(board_card_type: &SubType, _card_type: &CardType, _sub_type: &SubType) -> bool {
+        return *board_card_type == SubType::Roll;
     }
 }
 
@@ -242,7 +264,7 @@ impl Default for Accident {
                 card_type: CardType::Hazard,
                 sub_type: SubType::Accident,
                 action_type: ActionType::Offensive,
-                card_tag: Card
+                ..Default::default()
             },
             hazard: Hazard
         }
@@ -263,7 +285,7 @@ impl Default for FlatTyre {
                 card_type: CardType::Hazard,
                 sub_type: SubType::FlatTyre,
                 action_type: ActionType::Offensive,
-                card_tag: Card
+                ..Default::default()
             },
             hazard: Hazard
         }
@@ -284,7 +306,7 @@ impl Default for OutOfGas {
                 card_type: CardType::Hazard,
                 sub_type: SubType::OutOfGas,
                 action_type: ActionType::Offensive,
-                card_tag: Card
+                ..Default::default()
             },
             hazard: Hazard
         }
@@ -305,7 +327,7 @@ impl Default for SpeedLimit {
                 card_type: CardType::Hazard,
                 sub_type: SubType::SpeedLimit,
                 action_type: ActionType::Offensive,
-                card_tag: Card
+                ..Default::default()
             },
             hazard: Hazard
         }
@@ -326,7 +348,7 @@ impl Default for Stop {
                 card_type: CardType::Hazard,
                 sub_type: SubType::Stop,
                 action_type: ActionType::Offensive,
-                card_tag: Card
+                ..Default::default()
             },
             hazard: Hazard
         }
@@ -339,13 +361,13 @@ impl Default for Stop {
 #[derive(Component)]
 pub struct Remedy;
 impl Playable for Remedy {
-    fn is_valid(query: &Query<(Entity, &CardType, &SubType), With<PlayerBoard>>, card_type: &CardType, sub_type: &SubType) -> bool {
+    fn is_valid(board_card_type: &SubType, card_type: &CardType, sub_type: &SubType) -> bool {
         match sub_type {
-            SubType::Repairs => Repairs::is_valid(query, card_type, sub_type),
-            SubType::Gasoline => Gasoline::is_valid(query, card_type, sub_type),
-            SubType::EndOfLimit => EndOfLimit::is_valid(query, card_type, sub_type),
-            SubType::SpareTyre => SpareTyre::is_valid(query, card_type, sub_type),
-            SubType::Roll => Roll::is_valid(query, card_type, sub_type),
+            SubType::Repairs => Repairs::is_valid(board_card_type, card_type, sub_type),
+            SubType::Gasoline => Gasoline::is_valid(board_card_type, card_type, sub_type),
+            SubType::EndOfLimit => EndOfLimit::is_valid(board_card_type, card_type, sub_type),
+            SubType::SpareTyre => SpareTyre::is_valid(board_card_type, card_type, sub_type),
+            SubType::Roll => Roll::is_valid(board_card_type, card_type, sub_type),
             _ => panic!()
         }
     }
@@ -365,19 +387,15 @@ impl Default for Repairs {
                 card_type: CardType::Remedy,
                 sub_type: SubType::Repairs,
                 action_type: ActionType::Defensive,
-                card_tag: Card
+                ..Default::default()
             },
             remedy: Remedy
         }
     }
 }
 impl Playable for Repairs {
-    fn is_valid(query: &Query<(Entity, &CardType, &SubType), With<PlayerBoard>>, _card_type: &CardType, _sub_type: &SubType) -> bool {
-        if let Ok((_card, _board_card_type, board_sub_type)) = query.get_single() {
-            return *board_sub_type == SubType::Accident;
-        }
-
-        return false;
+    fn is_valid(board_card_type: &SubType, _card_type: &CardType, _sub_type: &SubType) -> bool {
+        return *board_card_type == SubType::Accident;
     }
 }
 
@@ -395,19 +413,15 @@ impl Default for Gasoline {
                 card_type: CardType::Remedy,
                 sub_type: SubType::Gasoline,
                 action_type: ActionType::Defensive,
-                card_tag: Card
+                ..Default::default()
             },
             remedy: Remedy
         }
     }
 }
 impl Playable for Gasoline {
-    fn is_valid(query: &Query<(Entity, &CardType, &SubType), With<PlayerBoard>>, _card_type: &CardType, _sub_type: &SubType) -> bool {
-        if let Ok((_card, _board_card_type, board_sub_type)) = query.get_single() {
-            return *board_sub_type == SubType::OutOfGas;
-        }
-
-        return false;
+    fn is_valid(board_card_type: &SubType, _card_type: &CardType, _sub_type: &SubType) -> bool {
+        return *board_card_type == SubType::OutOfGas;
     }
 }
 
@@ -425,19 +439,15 @@ impl Default for SpareTyre {
                 card_type: CardType::Remedy,
                 sub_type: SubType::SpareTyre,
                 action_type: ActionType::Defensive,
-                card_tag: Card
+                ..Default::default()
             },
             remedy: Remedy
         }
     }
 }
 impl Playable for SpareTyre {
-    fn is_valid(query: &Query<(Entity, &CardType, &SubType), With<PlayerBoard>>, _card_type: &CardType, _sub_type: &SubType) -> bool {
-        if let Ok((_card, _board_card_type, board_sub_type)) = query.get_single() {
-            return *board_sub_type == SubType::FlatTyre;
-        }
-
-        return false;
+    fn is_valid(board_card_type: &SubType, _card_type: &CardType, _sub_type: &SubType) -> bool {
+        return *board_card_type == SubType::FlatTyre;
     }
 }
 
@@ -455,19 +465,15 @@ impl Default for EndOfLimit {
                 card_type: CardType::Remedy,
                 sub_type: SubType::EndOfLimit,
                 action_type: ActionType::Defensive,
-                card_tag: Card
+                ..Default::default()
             },
             remedy: Remedy
         }
     }
 }
 impl Playable for EndOfLimit {
-    fn is_valid(query: &Query<(Entity, &CardType, &SubType), With<PlayerBoard>>, _card_type: &CardType, _sub_type: &SubType) -> bool {
-        if let Ok((_card, _board_card_type, board_sub_type)) = query.get_single() {
-            return *board_sub_type == SubType::SpeedLimit;
-        }
-
-        return false;
+    fn is_valid(board_card_type: &SubType, _card_type: &CardType, _sub_type: &SubType) -> bool {
+        return *board_card_type == SubType::SpeedLimit;
     }
 }
 
@@ -485,211 +491,236 @@ impl Default for Roll {
                 card_type: CardType::Remedy,
                 sub_type: SubType::Roll,
                 action_type: ActionType::Defensive,
-                card_tag: Card
+                ..Default::default()
             },
             remedy: Remedy
         }
     }
 }
 impl Playable for Roll {
-    fn is_valid(query: &Query<(Entity, &CardType, &SubType), With<PlayerBoard>>, _card_type: &CardType, _sub_type: &SubType) -> bool {
-        if let Ok((_card, board_card_type, board_sub_type)) = query.get_single() {
-            return (*board_card_type == CardType::Remedy && *board_sub_type != SubType::Roll) || *board_sub_type == SubType::Stop;
+    fn is_valid(board_card_type: &SubType, _card_type: &CardType, _sub_type: &SubType) -> bool {
+        match board_card_type {
+            SubType::Accident => return false,
+            SubType::OutOfGas => return false,
+            SubType::SpeedLimit => return false,
+            SubType::FlatTyre => return false,
+            SubType::Roll => return false,
+            _ => return true,
         }
-
-        // valid to play Roll if there are no cards in play
-        return true;
     }
 }
 
 // /*****************************
 // * Safeties
 // ******************************/
-// #[derive(Bundle)]
-// struct Safety
-// {
-//     card_config: CardBundle,
-// }
-// impl Default for Safety {
-//     fn default() -> Self {
-//         Self {
-//             card_config: CardBundle {
-//                 card_type: CardType::Safety,
-//                 action_type: ActionType::Defensive
-//             }
-//         }
-//     }
-// }
+#[derive(Component)]
+pub struct Safety;
+impl Playable for Safety {
+    fn is_valid(_board_card_type: &SubType, _card_type: &CardType, _sub_type: &SubType) -> bool {
+        // it is always valid to play a safety
+        // todo : effects of playing cards
+        
+        return true;
+    }
+}
 
-// #[derive(Bundle)]
-// struct DrivingAce
-// {
-//     card: Card,
-//     category: Safety,
-//     name: CardName
-// }
-// impl Default for DrivingAce {
-//     fn default() -> Self {
-//         Self {
-//             card: Card,
-//             category: Safety::default(),
-//             name: CardName("Driving Ace".into())
-//         }
-//     }
-// }
+#[derive(Bundle)]
+pub struct DrivingAce
+{
+    card: CardBundle,
+    safety: Safety
+}
+impl Default for DrivingAce {
+    fn default() -> Self {
+        Self {
+            card: CardBundle {
+                card_name: CardName("Driving Ace".into()),
+                card_type: CardType::Safety,
+                sub_type: SubType::DrivingAce,
+                action_type: ActionType::Defensive,
+                ..Default::default()
+            },
+            safety: Safety
+        }
+    }
+}
 
-// #[derive(Bundle)]
-// struct ExtraTank
-// {
-//     card: Card,
-//     category: Safety,
-//     name: CardName
-// }
-// impl Default for ExtraTank {
-//     fn default() -> Self {
-//         Self {
-//             card: Card,
-//             category: Safety::default(),
-//             name: CardName("Extra Tank".into())
-//         }
-//     }
-// }
+#[derive(Bundle)]
+pub struct ExtraTank
+{
+    card: CardBundle,
+    safety: Safety
+}
+impl Default for ExtraTank {
+    fn default() -> Self {
+        Self {
+            card: CardBundle {
+                card_name: CardName("Extra Tank".into()),
+                card_type: CardType::Safety,
+                sub_type: SubType::ExtraTank,
+                action_type: ActionType::Defensive,
+                ..Default::default()
+            },
+            safety: Safety
+        }
+    }
+}
 
-// #[derive(Bundle)]
-// struct PunctureProof
-// {
-//     card: Card,
-//     category: Safety,
-//     name: CardName
-// }
-// impl Default for PunctureProof {
-//     fn default() -> Self {
-//         Self {
-//             card: Card,
-//             category: Safety::default(),
-//             name: CardName("Puncture Proof".into())
-//         }
-//     }
-// }
+#[derive(Bundle)]
+pub struct PunctureProof
+{
+    card: CardBundle,
+    safety: Safety
+}
+impl Default for PunctureProof {
+    fn default() -> Self {
+        Self {
+            card: CardBundle {
+                card_name: CardName("Puncture Proof".into()),
+                card_type: CardType::Safety,
+                sub_type: SubType::PunctureProof,
+                action_type: ActionType::Defensive,
+                ..Default::default()
+            },
+            safety: Safety
+        }
+    }
+}
 
-// #[derive(Bundle)]
-// struct RightOfWay
-// {
-//     card: Card,
-//     category: Safety,
-//     name: CardName
-// }
-// impl Default for RightOfWay {
-//     fn default() -> Self {
-//         Self {
-//             card: Card,
-//             category: Safety::default(),
-//             name: CardName("Right of Way".into())
-//         }
-//     }
-// }
+#[derive(Bundle)]
+pub struct RightOfWay
+{
+    card: CardBundle,
+    safety: Safety
+}
+impl Default for RightOfWay {
+    fn default() -> Self {
+        Self {
+            card: CardBundle {
+                card_name: CardName("Right of Way".into()),
+                card_type: CardType::Safety,
+                sub_type: SubType::RightOfWay,
+                action_type: ActionType::Defensive,
+                ..Default::default()
+            },
+            safety: Safety
+        }
+    }
+}
 
-// /*****************************
-// * Distances
-// ******************************/
-// #[derive(Bundle)]
-// struct Distance
-// {
-//     card_config: CardBundle
-// }
-// impl Default for Distance {
-//     fn default() -> Self {
-//         Self {
-//             card_config: CardBundle {
-//                 card_type: CardType::Distance,
-//                 action_type: ActionType::Defensive
-//             }
-//         }
-//     }
-// }
+/*****************************
+* Distances
+******************************/
+#[derive(Component)]
+pub struct Distance;
+impl Playable for Distance {
+    fn is_valid(board_card_type: &SubType, _card_type: &CardType, _sub_type: &SubType) -> bool {
+        return *board_card_type == SubType::Roll;
+    }
+}
 
-// #[derive(Bundle)]
-// struct TwentyFive
-// {
-//     card: Card,
-//     category: Distance,
-//     name: CardName
-// }
-// impl Default for TwentyFive {
-//     fn default() -> Self {
-//         Self {
-//             card: Card,
-//             category: Distance::default(),
-//             name: CardName("25km".into())
-//         }
-//     }
-// }
+#[derive(Bundle)]
+pub struct TwentyFive
+{
+    card: CardBundle,
+    distance: Distance
+}
+impl Default for TwentyFive {
+    fn default() -> Self {
+        Self {
+            card: CardBundle {
+                card_name: CardName("25km".into()),
+                card_type: CardType::Distance,
+                sub_type: SubType::TwentyFive,
+                action_type: ActionType::Defensive,
+                ..Default::default()
+            },
+            distance: Distance
+        }
+    }
+}
 
-// #[derive(Bundle)]
-// struct Fifty
-// {
-//     card: Card,
-//     category: Distance,
-//     name: CardName
-// }
-// impl Default for Fifty {
-//     fn default() -> Self {
-//         Self {
-//             card: Card,
-//             category: Distance::default(),
-//             name: CardName("50km".into())
-//         }
-//     }
-// }
+#[derive(Bundle)]
+pub struct Fifty
+{
+    card: CardBundle,
+    distance: Distance
+}
+impl Default for Fifty {
+    fn default() -> Self {
+        Self {
+            card: CardBundle {
+                card_name: CardName("50km".into()),
+                card_type: CardType::Distance,
+                sub_type: SubType::Fifty,
+                action_type: ActionType::Defensive,
+                ..Default::default()
+            },
+            distance: Distance
+        }
+    }
+}
 
-// #[derive(Bundle)]
-// struct SeventyFive
-// {
-//     card: Card,
-//     category: Distance,
-//     name: CardName
-// }
-// impl Default for SeventyFive {
-//     fn default() -> Self {
-//         Self {
-//             card: Card,
-//             category: Distance::default(),
-//             name: CardName("75km".into())
-//         }
-//     }
-// }
+#[derive(Bundle)]
+pub struct SeventyFive
+{
+    card: CardBundle,
+    distance: Distance
+}
+impl Default for SeventyFive {
+    fn default() -> Self {
+        Self {
+            card: CardBundle {
+                card_name: CardName("75km".into()),
+                card_type: CardType::Distance,
+                sub_type: SubType::SeventyFive,
+                action_type: ActionType::Defensive,
+                ..Default::default()
+            },
+            distance: Distance
+        }
+    }
+}
 
-// #[derive(Bundle)]
-// struct OneHundred
-// {
-//     card: Card,
-//     category: Distance,
-//     name: CardName
-// }
-// impl Default for OneHundred {
-//     fn default() -> Self {
-//         Self {
-//             card: Card,
-//             category: Distance::default(),
-//             name: CardName("100km".into())
-//         }
-//     }
-// }
+#[derive(Bundle)]
+pub struct OneHundred
+{
+    card: CardBundle,
+    distance: Distance
+}
+impl Default for OneHundred {
+    fn default() -> Self {
+        Self {
+            card: CardBundle {
+                card_name: CardName("100km".into()),
+                card_type: CardType::Distance,
+                sub_type: SubType::OneHundred,
+                action_type: ActionType::Defensive,
+                ..Default::default()
+            },
+            distance: Distance
+        }
+    }
+}
 
-// #[derive(Bundle)]
-// struct TwoHundred
-// {
-//     card: Card,
-//     category: Distance,
-//     name: CardName
-// }
-// impl Default for TwoHundred {
-//     fn default() -> Self {
-//         Self {
-//             card: Card,
-//             category: Distance::default(),
-//             name: CardName("200km".into())
-//         }
-//     }
-// }
+#[derive(Bundle)]
+pub struct TwoHundred
+{
+    card: CardBundle,
+    distance: Distance
+}
+impl Default for TwoHundred {
+    fn default() -> Self {
+        Self {
+            card: CardBundle {
+                card_name: CardName("200km".into()),
+                card_type: CardType::Distance,
+                sub_type: SubType::TwoHundred,
+                action_type: ActionType::Defensive,
+                ..Default::default()
+            },
+            distance: Distance
+        }
+    }
+}
 

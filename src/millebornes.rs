@@ -5,8 +5,10 @@ use rand::seq::SliceRandom;
 use crate::constants::*;
 use crate::cards::*;
 use crate::menu::*;
-use crate::ui::board_ui::draw_board_ui;
-use crate::ui::card_ui::UILink;
+use crate::ui::board_ui::create_board_ui;
+use crate::ui::board_ui::update_board_ui;
+use crate::ui::card_ui::CardToUILink;
+use crate::ui::card_ui::UIToCardLink;
 use crate::ui::card_ui::get_card_colour;
 
 pub struct MilleBornes;
@@ -18,39 +20,57 @@ impl Plugin for MilleBornes {
             .add_plugins(Menu)
             .insert_resource(ClearColor(BACKGROUND_COLOUR))
             .add_state::<GameState>()
+            .add_state::<TurnState>()
             // Resources 
             .init_resource::<Game>()
             .init_resource::<GameRules>()
+            .init_resource::<Score>()
             .add_systems(
                 Startup,
                 setup_camera
             )
             // Game Setup
             .add_systems(
-                OnEnter(GameState::SetupGame), 
-                setup_game.after(CardSet::CardInit)
+                OnEnter(GameState::SetupGame), (
+                    setup_game,
+                    create_board_ui,
+                    begin_game
+                ).chain().after(CardSet::CardInit)
             )
             // Game Start
             .add_systems(
                 OnEnter(GameState::BeginGame), (
                     deal,
                     apply_deferred.after(deal),
-                    draw_board_ui,
-                    start_game
+                    next_turn
                 ).chain()
+            )
+            .add_systems(
+                OnEnter(TurnState::PlayerTurn),
+                draw_player_card
+            )
+            .add_systems(
+                OnEnter(TurnState::OpponentTurn),
+                draw_opponent_card
+            )
+            .add_systems(
+                PreUpdate,
+                update_board_ui.run_if(in_state(GameState::DuringTurn))
             )
             // Player Turn
             .add_systems(
-                Update, (
-                    update_cards,
-                    apply_deferred.after(update_cards),
-                    process_player_turn,
-                    //draw_board_ui
-                ).run_if(in_state(GameState::PlayerTurn))
+                Update, 
+                process_player_turn.run_if(in_state(TurnState::PlayerTurn))
             )
             // Opponent Turn
-            .add_systems(Update, 
-                process_opponent_turn.run_if(in_state(GameState::OpponentTurn))
+            .add_systems(Update,
+                process_opponent_turn.run_if(in_state(TurnState::OpponentTurn))
+            )
+            .add_systems(
+                PostUpdate, (
+                    despawn_old_ui.run_if(in_state(GameState::DuringTurn)),
+                    next_turn.run_if(in_state(GameState::NextTurn))
+                )
             );
     }
 }
@@ -62,16 +82,22 @@ struct Game {
 
 #[derive(Resource)]
 struct GameRules {
-    // miles: i32,
+    miles: i32,
     hand_size: i32
 }
 impl Default for GameRules {
     fn default() -> Self {
         Self {
-            // miles: 700,
+            miles: 700,
             hand_size: 6
         }
     }
+}
+
+#[derive(Resource, Default)]
+struct Score {
+    player_score: i32,
+    opponent_score: i32
 }
 
 /*************
@@ -83,8 +109,7 @@ fn setup_camera(mut commands: Commands) {
 }
 
 fn setup_game(mut game: ResMut<Game>, mut commands: Commands, 
-              card_query: Query<(Entity, &Card)>,
-              mut next_state: ResMut<NextState<GameState>>)
+              card_query: Query<(Entity, &Card)>)
 {
     for (entity, _card) in card_query.iter()
     {
@@ -95,7 +120,10 @@ fn setup_game(mut game: ResMut<Game>, mut commands: Commands,
     }
 
     game.deck.shuffle(&mut thread_rng());
-    println!("{}", game.deck.len());
+}
+
+fn begin_game(mut next_state: ResMut<NextState<GameState>>)
+{
     next_state.set(GameState::BeginGame);
 }
 
@@ -111,60 +139,158 @@ fn deal(game_rules: Res<GameRules>, mut game: ResMut<Game>, mut commands: Comman
     }
 }
 
+fn draw_player_card(mut game: ResMut<Game>, mut commands: Commands)
+{
+    if let Some(card) = game.deck.pop() {
+        commands.entity(card).remove::<Deck>().insert(PlayerHand);
+    }
+}
+
+fn draw_opponent_card(mut game: ResMut<Game>, mut commands: Commands)
+{
+    if let Some(card) = game.deck.pop() {
+        commands.entity(card).remove::<Deck>().insert(OpponentHand);
+    }
+}
+
 /************
  * GAME LOOP
  ************/
-
-fn start_game(mut next_state: ResMut<NextState<GameState>>) {
-    next_state.set(GameState::PlayerTurn);
-}
-
-fn update_cards(mut interaction_query: Query<(Entity, &Interaction, &UILink, &mut BackgroundColor),
+fn process_player_turn(mut interaction_query: Query<(&Interaction, &UIToCardLink, &mut BackgroundColor),
                                              (Changed<Interaction>, With<Button>)>,
-                mut commands: Commands,
-                card_query: Query<(&CardName, &CardType, &SubType)>,
-                board_query: Query<(Entity, &CardType, &SubType), With<PlayerBoard>>) 
+                       mut commands: Commands,
+                       card_query: Query<(&CardName, &CardType, &SubType), With<PlayerHand>>,
+                       board_query: Query<(Entity, &CardType, &SubType), With<PlayerBoard>>,
+                       mut next_turn: ResMut<NextState<GameState>>) 
 {
-    for (ui_entity, interaction, ui_link, mut colour) in &mut interaction_query {
-        let (card_name, card_type, sub_type) = card_query.get(ui_link.entity).unwrap();
-        
-        if Card::is_valid(&board_query, card_type, sub_type) {
-            match *interaction {
-                Interaction::Pressed => {
-                    *colour = PRESSED_BUTTON.into();
-                    println!("Clicked {}", card_name.0);
-                    if let Ok((entity, _, _)) = board_query.get_single() {
-                        commands.entity(entity).remove::<PlayerBoard>();
-                        // todo remove ui here
-                    }
-                    
-                    commands.entity(ui_link.entity).insert(PlayerBoard);
-                    commands.entity(ui_link.entity).remove::<PlayerHand>();
-                    commands.entity(ui_entity).despawn_recursive();
+    for (interaction, ui_link, mut colour) in &mut interaction_query {
 
+        if let Ok((card_name, card_type, sub_type)) = card_query.get(ui_link.card_entity) {
+            let mut board_card_type = SubType::NoCard;
+            if board_query.get_single().is_ok() {
+                let (_board, _board_card, board_sub_card) = board_query.single();
+                board_card_type = *board_sub_card;
+            }
+
+            if Card::is_valid(&board_card_type, card_type, sub_type) {
+                match *interaction {
+                    Interaction::Pressed => {
+                        *colour = PRESSED_BUTTON.into();
+                        println!("Player clicked {}", card_name.0);
+                        if let Ok((entity, _, _)) = board_query.get_single() {
+                            commands.entity(entity).remove::<PlayerBoard>();
+                        }
+                        
+                        commands.entity(ui_link.card_entity).insert(PlayerBoard);
+                        commands.entity(ui_link.card_entity).remove::<PlayerHand>();
+
+                        next_turn.set(GameState::NextTurn);
+                    }
+                    Interaction::Hovered => {
+                        *colour = HOVERED_BUTTON.into();
+                    }
+                    Interaction::None => {
+                        *colour = get_card_colour(card_type).into()
+                    }
                 }
-                Interaction::Hovered => {
-                    *colour = HOVERED_BUTTON.into();
-                }
-                Interaction::None => {
-                    *colour = get_card_colour(card_type).into()
-                }
+            }
+            else {
+                *colour = get_card_colour(card_type).into();
             }
         }
     }
 }
 
-fn process_player_turn() {
-    
+fn process_opponent_turn(mut interaction_query: Query<(&Interaction, &UIToCardLink, &mut BackgroundColor),
+                                                      (Changed<Interaction>, With<Button>)>,
+                         mut commands: Commands,
+                         card_query: Query<(&CardName, &CardType, &SubType), With<OpponentHand>>,
+                         board_query: Query<(Entity, &CardType, &SubType), With<OpponentBoard>>,
+                         mut next_turn: ResMut<NextState<GameState>>) 
+{
+    for (interaction, ui_link, mut colour) in &mut interaction_query {
+
+        if let Ok((card_name, card_type, sub_type)) = card_query.get(ui_link.card_entity) {
+            let mut board_card_type = SubType::NoCard;
+            if board_query.get_single().is_ok() {
+                board_card_type = *board_query.single().2;
+            }
+
+            if Card::is_valid(&board_card_type, card_type, sub_type) {
+                match *interaction {
+                    Interaction::Pressed => {
+                        *colour = PRESSED_BUTTON.into();
+                        println!("Opponent clicked {}", card_name.0);
+                        if let Ok((entity, _, _)) = board_query.get_single() {
+                            commands.entity(entity).remove::<OpponentBoard>();
+                        }
+
+                        commands.entity(ui_link.card_entity).insert(OpponentBoard);
+                        commands.entity(ui_link.card_entity).remove::<OpponentHand>();
+
+                        next_turn.set(GameState::NextTurn);
+                    }
+                    Interaction::Hovered => {
+                        *colour = HOVERED_BUTTON.into();
+                    }
+                    Interaction::None => {
+                        *colour = get_card_colour(card_type).into()
+                    }
+                }
+            }
+            else {
+                *colour = get_card_colour(card_type).into();
+            }
+        }
+    }
 }
 
-fn process_opponent_turn() {
+fn despawn_old_ui(mut commands: Commands,
+                  mut player_board_removals: RemovedComponents<PlayerBoard>,
+                  mut player_card_removals: RemovedComponents<PlayerHand>,
+                  mut opponent_board_removals: RemovedComponents<OpponentBoard>,
+                  mut opponent_card_removals: RemovedComponents<OpponentHand>,
+                  query: Query<&CardToUILink>)
+{
+    for entity in player_board_removals.iter() {
+        if let Ok(ui_entity) = query.get(entity) {
+            commands.entity(ui_entity.ui_entity).despawn_recursive();
+        }
+    }
 
+    for entity in player_card_removals.iter() {
+        if let Ok(ui_entity) = query.get(entity) {
+            commands.entity(ui_entity.ui_entity).despawn_recursive();
+        }
+    }
+
+    for entity in opponent_board_removals.iter() {
+        if let Ok(ui_entity) = query.get(entity) {
+            commands.entity(ui_entity.ui_entity).despawn_recursive();
+        }
+    }
+
+    for entity in opponent_card_removals.iter() {
+        if let Ok(ui_entity) = query.get(entity) {
+            commands.entity(ui_entity.ui_entity).despawn_recursive();
+        }
+    }
+}
+
+fn next_turn(current_state: Res<State<TurnState>>,
+             mut next_state: ResMut<NextState<TurnState>>,
+             mut next_game_state: ResMut<NextState<GameState>>)
+{
+    match current_state.get() {
+        TurnState::PlayerTurn => next_state.set(TurnState::OpponentTurn),
+        TurnState::OpponentTurn => next_state.set(TurnState::PlayerTurn),
+        TurnState::NoTurn => next_state.set(TurnState::PlayerTurn),
+    }
+
+    next_game_state.set(GameState::DuringTurn);
 }
 
 // todo
-// remaining deck
 // board
 // better UI plugin
 // ai
-// player controls
